@@ -1,0 +1,25 @@
+#!/bin/bash
+if [ -z "$1" ]; then
+    echo -e "\e[35m✦ Usage:\e[0m get-song \"Song Name\""
+    exit 1
+fi
+MUSIC_DIR="$HOME/Vault/Music"
+echo -e "\e[36m🔍 Uplinking to servers for: $1...\e[0m"
+
+# Fetch top 7 results and pipe them into fzf
+SELECTION=$(yt-dlp --print "%(id)s | %(title)s [%(duration_string)s]" "ytsearch7:$1 audio" 2>/dev/null | \
+fzf --prompt="✦ SELECT TRACK: " \
+    --color=dark,fg:cyan,hl:magenta,fg+:white,hl+:magenta,prompt:magenta,pointer:cyan \
+    --layout=reverse --border=rounded --margin=5%,10%)
+
+if [ -n "$SELECTION" ]; then
+    ID=$(echo "$SELECTION" | awk -F' \\| ' '{print $1}')
+    TITLE=$(echo "$SELECTION" | awk -F' \\| ' '{print $2}')
+    
+    echo -e "\e[35m⬇️ Extracting native Opus (251) stream...\e[0m"
+    # Target 251 explicitly, keep Opus container, zero lossy transcoding
+    yt-dlp -f "251/ba[acodec=opus]/ba" -x --audio-format opus -o "$MUSIC_DIR/%(title)s.%(ext)s" "https://www.youtube.com/watch?v=$ID"
+    
+    notify-send -u normal -t 3000 "✦ Vault Secured (Opus)" "$TITLE"
+    echo -e "\e[32m✅ Master Opus track successfully locked in the Vault.\e[0m"
+fi

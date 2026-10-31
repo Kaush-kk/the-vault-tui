@@ -1,0 +1,13 @@
+#!/bin/bash
+MUSIC_DIR="$HOME/Vault/Music"
+mkdir -p "$MUSIC_DIR"
+
+SONG=$(find "$MUSIC_DIR" -type f \( -name "*.opus" -o -name "*.mp3" -o -name "*.m4a" -o -name "*.wav" -o -name "*.flac" \) -printf "%f\n" | \
+fzf --prompt="✦ PLAY: " \
+    --color=dark,fg:cyan,hl:magenta,fg+:white,hl+:magenta,prompt:magenta,pointer:cyan \
+    --layout=reverse --border=rounded --margin=5%,10%)
+
+if [ -n "$SONG" ]; then
+    pkill -f "mpv.*--no-video"
+    nohup mpv --no-video --loop-playlist=inf "$MUSIC_DIR/$SONG" >/dev/null 2>&1 &
+fi
