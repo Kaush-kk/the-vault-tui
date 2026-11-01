@@ -1,0 +1,81 @@
+#!/bin/bash
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+export PIPEWIRE_RUNTIME_DIR="$XDG_RUNTIME_DIR"
+export PULSE_RUNTIME_PATH="$XDG_RUNTIME_DIR/pulse"
+
+MUSIC_DIR="$HOME/Vault/Music"
+mkdir -p "$MUSIC_DIR"
+
+if [ "$1" = "--app" ] || [ "$1" = "--gui" ]; then
+    nohup brave-browser --app="https://music.youtube.com" >/dev/null 2>&1 &
+    exit 0
+fi
+
+if [ "$1" = "stop" ]; then
+    pkill -f "mpv.*--no-video" 2>/dev/null
+    notify-send -u low -t 2000 "✦ MetroList Stream" "Playback stopped."
+    exit 0
+fi
+
+AUTO_PLAY=0
+if [ "$1" = "--play" ] || [ "$1" = "-p" ]; then
+    AUTO_PLAY=1
+    shift
+fi
+
+# If launched by Veer or a background shortcut (no terminal TTY attached), auto-stream top result
+if [ ! -t 0 ] || [ ! -t 1 ]; then
+    AUTO_PLAY=1
+fi
+
+QUERY="$*"
+if [ -z "$QUERY" ]; then
+    echo -ne "\e[35m✦ METROLIST LIVE STREAM ❯ \e[0m\e[36mSearch Song / Artist:\e[0m "
+    read -r QUERY
+    [ -z "$QUERY" ] && exit 0
+fi
+
+if [ "$AUTO_PLAY" -eq 1 ]; then
+    notify-send -u normal -t 2500 "✦ MetroList Uplinking..." "Searching stream: $QUERY"
+    TRACK=$(yt-dlp --print "%(id)s | %(title)s" "ytsearch1:$QUERY audio" 2>/dev/null | head -n1)
+    if [ -n "$TRACK" ]; then
+        ID=$(echo "$TRACK" | awk -F' \\| ' '{print $1}')
+        TITLE=$(echo "$TRACK" | awk -F' \\| ' '{print $2}')
+        URL="https://www.youtube.com/watch?v=$ID"
+        pkill -f "mpv.*--no-video" 2>/dev/null
+        nohup mpv --no-video --really-quiet --ytdl-format="251/ba[acodec=opus]/ba" "$URL" >/dev/null 2>&1 &
+        notify-send -u normal -t 3500 "✦ MetroList Streaming" "▶ $TITLE"
+    else
+        notify-send -u critical -t 3000 "✦ MetroList Error" "Could not find stream for: $QUERY"
+    fi
+    exit 0
+fi
+
+echo -e "\e[36m🔍 Fetching YouTube Music catalog for: $QUERY...\e[0m"
+SELECTION=$(yt-dlp --print "%(id)s | %(title)s [%(duration_string)s]" "ytsearch10:$QUERY audio" 2>/dev/null | \
+fzf --prompt="✦ METROLIST [Enter=Stream | Ctrl-D=Save to Vault]: " \
+    --expect=ctrl-d \
+    --color=dark,fg:cyan,hl:magenta,fg+:white,hl+:magenta,prompt:magenta,pointer:cyan \
+    --layout=reverse --border=rounded --margin=5%,8%)
+
+KEY=$(echo "$SELECTION" | head -n1)
+TRACK=$(echo "$SELECTION" | sed -n '2p')
+
+if [ -n "$TRACK" ]; then
+    ID=$(echo "$TRACK" | awk -F' \\| ' '{print $1}')
+    TITLE=$(echo "$TRACK" | awk -F' \\| ' '{print $2}')
+    URL="https://www.youtube.com/watch?v=$ID"
+
+    if [ "$KEY" = "ctrl-d" ]; then
+        echo -e "\e[35m⬇️ Downloading '$TITLE' (251 Opus) to ~/Vault/Music...\e[0m"
+        yt-dlp -f "251/ba[acodec=opus]/ba" -x --audio-format opus -o "$MUSIC_DIR/%(title)s.%(ext)s" "$URL"
+        notify-send -u normal -t 3000 "✦ MetroList -> Vault" "Saved: $TITLE"
+    else
+        pkill -f "mpv.*--no-video" 2>/dev/null
+        nohup mpv --no-video --really-quiet --ytdl-format="251/ba[acodec=opus]/ba" "$URL" >/dev/null 2>&1 &
+        notify-send -u normal -t 3000 "✦ MetroList Streaming" "▶ $TITLE"
+        echo -e "\e[32m▶ Now Streaming in background: $TITLE\e[0m"
+    fi
+fi
